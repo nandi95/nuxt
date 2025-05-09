@@ -6,8 +6,9 @@ import { destr } from 'destr'
 
 import { mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
 
-import { hasProtocol } from 'ufo'
+import { hasProtocol, withQuery } from 'ufo'
 import { flushPromises } from '@vue/test-utils'
+import { createClientPage } from '../../packages/nuxt/src/components/runtime/client-component'
 import * as composables from '#app/composables'
 
 import { clearNuxtData, refreshNuxtData, useAsyncData, useNuxtData } from '#app/composables/asyncData'
@@ -238,6 +239,27 @@ describe('useAsyncData', () => {
     `)
     expect(data.value).toEqual(cachedData.value)
     clearNuxtData(uniqueKey)
+  })
+
+  it('should be usable _after_ a useNuxtData call after navigation', async () => {
+    const getData = async () => {
+      const wrapper = await mountSuspended(({
+        async setup () {
+          useNuxtData(uniqueKey)
+          const { data } = await useAsyncData(uniqueKey, () => Promise.resolve('foo'))
+          return () => h('div', [data.value])
+        },
+      }))
+      try {
+        return wrapper.html({ raw: true })
+      } finally {
+        wrapper.unmount()
+      }
+    }
+    useNuxtApp().payload.data[uniqueKey] = null
+    expect(await getData()).toMatchInlineSnapshot(`"<div>foo</div>"`)
+    // simulate a second visit to the page
+    expect(await getData()).toMatchInlineSnapshot(`"<div>foo</div>"`)
   })
 
   it('should be refreshable', async () => {
@@ -587,6 +609,25 @@ describe('useAsyncData', () => {
     expect(await getData()).toBe('undefined')
   })
 
+  it('should remain reactive after being reinitialised', async () => {
+    const promiseFn = vi.fn((value: string) => Promise.resolve(value))
+    const component = (value: string) => defineComponent({
+      setup () {
+        const { data } = useAsyncData('fixed', () => promiseFn(value))
+        return () => h('div', [data.value])
+      },
+    })
+
+    const comp1 = await mountSuspended(component('first'))
+    expect(promiseFn).toHaveBeenCalledTimes(1)
+    comp1.unmount()
+
+    const comp2 = await mountSuspended(component('second'))
+    expect(promiseFn).toHaveBeenCalledTimes(2)
+    expect(promiseFn).toHaveBeenLastCalledWith('second')
+    expect(comp2.html()).toMatchInlineSnapshot(`"<div>second</div>"`)
+  })
+
   it('should be synced with useNuxtData', async () => {
     const { data: nuxtData } = useNuxtData('nuxtdata-sync')
     const promise = useAsyncData('nuxtdata-sync', () => Promise.resolve('test'), { default: () => 'default' })
@@ -651,6 +692,104 @@ describe('useFetch', () => {
 
     expect(data.value).toEqual({ url: '/api/updated' })
     expect(error.value).toBe(undefined)
+  })
+
+  it('should not trigger rerunning fetch if `watch: false`', async () => {
+    let count = 0
+    registerEndpoint('/api/rerun', defineEventHandler(() => ({ count: count++ })))
+
+    const q = ref('')
+    const { data } = await useFetch('/api/rerun', {
+      query: { q },
+      watch: false,
+    })
+
+    expect(data.value).toStrictEqual({ count: 0 })
+    q.value = 'test'
+
+    await flushPromises()
+    await nextTick()
+    await flushPromises()
+
+    expect(data.value).toStrictEqual({ count: 0 })
+  })
+
+  it('should work with reactive keys and immediate: false', async () => {
+    registerEndpoint('/api/immediate-false', defineEventHandler(() => ({ url: '/api/immediate-false' })))
+
+    const q = ref('')
+    const { data } = await useFetch('/api/immediate-false', {
+      query: { q },
+      immediate: false,
+    })
+
+    expect(data.value).toBe(undefined)
+    q.value = 'test'
+
+    await flushPromises()
+    await nextTick()
+    await flushPromises()
+
+    expect(data.value).toEqual({ url: '/api/immediate-false' })
+  })
+
+  it('should work with reactive request path and immediate: false', async () => {
+    registerEndpoint('/api/immediate-false', defineEventHandler(() => ({ url: '/api/immediate-false' })))
+
+    const q = ref('')
+    const { data } = await useFetch(() => withQuery('/api/immediate-false', { q: q.value }), {
+      immediate: false,
+    })
+
+    expect(data.value).toBe(undefined)
+    q.value = 'test'
+
+    await flushPromises()
+    await nextTick()
+    await flushPromises()
+
+    expect(data.value).toEqual({ url: '/api/immediate-false' })
+  })
+
+  it('should be accessible immediately', async () => {
+    registerEndpoint('/api/watchable-fetch', defineEventHandler(() => ({ url: '/api/watchable-fetch' })))
+
+    const searchTerm = ref('')
+
+    const { data } = await useFetch('/api/watchable-fetch', {
+      params: { q: searchTerm },
+    })
+
+    for (const value of [undefined, 'pre', 'post', 'sync'] as const) {
+      watchEffect(() => {
+        expect(() => data.value).not.toThrow()
+      }, { flush: value })
+    }
+
+    searchTerm.value = 'new'
+
+    await nextTick()
+    await flushPromises()
+  })
+
+  it('should handle complex objects in body', async () => {
+    registerEndpoint('/api/complex-objects', defineEventHandler(() => ({ url: '/api/complex-objects' })))
+    const formData = new FormData()
+    formData.append('file', new File([], 'test.txt'))
+    const testCases = [
+      { ref: ref('test') },
+      ref('test'),
+      formData,
+      new ArrayBuffer(),
+    ]
+    for (const value of testCases) {
+      // @ts-expect-error auto-key is not valid in type signature
+      const { data: original } = await useFetch('/api/complex-objects', { body: value }, 'autokey')
+      original.value = 'new value'
+      // @ts-expect-error auto-key is not valid in type signature
+      const { data } = await useFetch('/api/complex-objects', { body: value, immediate: false }, 'autokey')
+      expect(data.value).toEqual('new value')
+    }
   })
 
   it('should timeout', async () => {
@@ -1046,7 +1185,25 @@ describe('defineNuxtComponent', () => {
     }))
     expect(wrapper.html()).toMatchInlineSnapshot('"<div>hi there</div>"')
   })
-  it.todo('should support Options API asyncData')
+
+  it('should support Options API asyncData', async () => {
+    const nuxtApp = useNuxtApp()
+    nuxtApp.isHydrating = true
+    nuxtApp.payload.serverRendered = true
+    const ClientOnlyPage = await createClientPage(() => Promise.resolve(defineNuxtComponent({
+      asyncData: () => ({
+        users: ['alice', 'bob'],
+      }),
+      render () {
+        // @ts-expect-error this is not typed
+        return h('div', `Total users: ${this.users.value.length}`)
+      },
+    })))
+    const wrapper = await mountSuspended(ClientOnlyPage)
+    expect(wrapper.html()).toMatchInlineSnapshot(`"<div>Total users: 2</div>"`)
+    nuxtApp.isHydrating = false
+    nuxtApp.payload.serverRendered = false
+  })
   it.todo('should support Options API head')
 })
 
