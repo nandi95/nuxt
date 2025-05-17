@@ -165,9 +165,9 @@ export default defineResolvers({
           return false
         }
 
-        const validOptions = ['manual', 'automatic', 'automatic-immediate'] as const
-        type EmitRouteChunkError = typeof validOptions[number]
-        if (typeof val === 'string' && validOptions.includes(val as EmitRouteChunkError)) {
+        const validOptions = new Set(['manual', 'automatic', 'automatic-immediate'] as const)
+        type EmitRouteChunkError = typeof validOptions extends Set<infer Option> ? Option : never
+        if (typeof val === 'string' && validOptions.has(val as EmitRouteChunkError)) {
           return val as EmitRouteChunkError
         }
 
@@ -291,9 +291,9 @@ export default defineResolvers({
      */
     watcher: {
       $resolve: async (val, get) => {
-        const validOptions = ['chokidar', 'parcel', 'chokidar-granular'] as const
-        type WatcherOption = typeof validOptions[number]
-        if (typeof val === 'string' && validOptions.includes(val as WatcherOption)) {
+        const validOptions = new Set(['chokidar', 'parcel', 'chokidar-granular'] as const)
+        type WatcherOption = typeof validOptions extends Set<infer Option> ? Option : never
+        if (typeof val === 'string' && validOptions.has(val as WatcherOption)) {
           return val as WatcherOption
         }
         const [srcDir, rootDir] = await Promise.all([get('srcDir'), get('rootDir')])
@@ -463,9 +463,9 @@ export default defineResolvers({
      */
     spaLoadingTemplateLocation: {
       $resolve: async (val, get) => {
-        const validOptions = ['body', 'within'] as const
-        type SpaLoadingTemplateLocation = typeof validOptions[number]
-        return typeof val === 'string' && validOptions.includes(val as SpaLoadingTemplateLocation) ? val as SpaLoadingTemplateLocation : (((await get('future')).compatibilityVersion === 4) ? 'body' : 'within')
+        const validOptions = new Set(['body', 'within'] as const)
+        type SpaLoadingTemplateLocation = typeof validOptions extends Set<infer Option> ? Option : never
+        return typeof val === 'string' && validOptions.has(val as SpaLoadingTemplateLocation) ? val as SpaLoadingTemplateLocation : (((await get('future')).compatibilityVersion === 4) ? 'body' : 'within')
       },
     },
 
@@ -604,6 +604,17 @@ export default defineResolvers({
     granularCachedData: {
       $resolve: async (val, get) => {
         return typeof val === 'boolean' ? val : ((await get('future')).compatibilityVersion === 4)
+      },
+    },
+
+    /**
+     * Whether to run `useFetch` when the key changes, even if it is set to `immediate: false` and it has not been triggered yet.
+     *
+     * `useFetch` and `useAsyncData` will always run when the key changes if `immediate: true` or if it has been already triggered.
+     */
+    alwaysRunFetchOnKeyChange: {
+      $resolve: async (val, get) => {
+        return typeof val === 'boolean' ? val : ((await get('future')).compatibilityVersion !== 4)
       },
     },
 
