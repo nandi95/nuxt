@@ -520,6 +520,17 @@ export const publicPathTemplate: NuxtTemplate = {
   },
 }
 
+export const globalPolyfillsTemplate: NuxtTemplate = {
+  filename: 'global-polyfills.mjs',
+  getContents () {
+    // Node.js compatibility
+    return `
+if (!("global" in globalThis)) {
+  globalThis.global = globalThis;
+}`
+  },
+}
+
 export const dollarFetchTemplate: NuxtTemplate = {
   filename: 'fetch.mjs',
   getContents () {
@@ -573,6 +584,7 @@ export const nuxtConfigTemplate: NuxtTemplate = {
       `export const purgeCachedData = ${!!ctx.nuxt.options.experimental.purgeCachedData}`,
       `export const granularCachedData = ${!!ctx.nuxt.options.experimental.granularCachedData}`,
       `export const pendingWhenIdle = ${!!ctx.nuxt.options.experimental.pendingWhenIdle}`,
+      `export const alwaysRunFetchOnKeyChange = ${!!ctx.nuxt.options.experimental.alwaysRunFetchOnKeyChange}`,
     ].join('\n\n')
   },
 }
