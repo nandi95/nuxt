@@ -155,6 +155,7 @@ export default defineConfig({
         test: {
           name: 'unit',
           benchmark: { include: [] },
+          globalSetup: ['./test/setup-prepare.ts'],
           setupFiles: ['./test/setup-env.ts'],
           include: ['packages/**/*.{test,spec}.ts'],
           testTimeout: isWindows ? 60000 : 10000,
@@ -167,6 +168,7 @@ export default defineConfig({
           name: 'nuxt-universal',
           dir: './test/nuxt/universal',
           environment: 'nuxt',
+          globalSetup: ['./test/setup-prepare.ts'],
           environmentOptions: {
             nuxt: {
               overrides: { pages: false },
@@ -183,6 +185,7 @@ export default defineConfig({
           dir: './test/nuxt',
           exclude: [...defaultExclude, '**/universal/**', '**/dev/**'],
           environment: 'nuxt',
+          globalSetup: ['./test/setup-prepare.ts'],
           setupFiles: ['./test/setup-runtime.ts'],
           env: {
             PROJECT: project,
@@ -202,6 +205,7 @@ export default defineConfig({
           name: 'nuxt-dev',
           dir: './test/nuxt/dev',
           environment: 'nuxt',
+          globalSetup: ['./test/setup-prepare.ts'],
           setupFiles: ['./test/setup-runtime.ts'],
           environmentOptions: {
             nuxt: {
